@@ -1,0 +1,39 @@
+{
+  "include": ["src", "types"],
+  "compilerOptions": {
+    // from https://mui.com/guides/typescript/
+    "noImplicitAny": true,
+    "noImplicitThis": true,
+    "strictNullChecks": true,
+
+    "skipLibCheck": true,
+    "incremental": true,
+
+    "target": "ESNext",
+    "lib": ["DOM", "DOM.Iterable", "ESNext", "es6"],
+
+    "strict": true,
+    "noFallthroughCasesInSwitch": true,
+    "noImplicitReturns": true,
+    "noPropertyAccessFromIndexSignature": true,
+    "noUncheckedIndexedAccess": true,
+    "strictBindCallApply": true,
+    "exactOptionalPropertyTypes": true,
+
+    "noUnusedLocals": true,
+    "allowUnreachableCode": false,
+
+    "allowJs": false,
+    "allowSyntheticDefaultImports": true,
+    "forceConsistentCasingInFileNames": true,
+    "module": "ESNext",
+    "moduleResolution": "Node",
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+
+    "baseUrl": "./",
+    /* noEmit - Snowpack builds (emits) files, so tsc shouldn't. */
+    "noEmit": true,
+    "importsNotUsedAsValues": "error"
+  }
+}
