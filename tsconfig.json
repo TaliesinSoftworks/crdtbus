@@ -32,8 +32,9 @@
     "isolatedModules": true,
 
     "baseUrl": "./",
-    /* noEmit - Snowpack builds (emits) files, so tsc shouldn't. */
-    "noEmit": true,
-    "importsNotUsedAsValues": "error"
+    "importsNotUsedAsValues": "error",
+
+    "outDir": "dist",
+    "declaration": true
   }
 }
