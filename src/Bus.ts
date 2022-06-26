@@ -24,6 +24,7 @@ export type Bus<T> = {
 export type BusConfig<T> = {
   readonly topic: string
   readonly agentId: string
+  readonly signalingServerHost: string
   load(): T
   save(data: T): void
   merge(a: T, b: T): T
@@ -46,6 +47,7 @@ export function Bus<T>(config: BusConfig<T>): Bus<T> {
     (network = await PeerNetwork<T>(
       agentId,
       config.topic,
+      config.signalingServerHost,
       state.get,
       networkStatus.pub,
       whosOnline.pub,
@@ -105,6 +107,7 @@ integrationTest("a Bus", {
       agentId: "agent-1",
       merge,
       ...store1,
+      signalingServerHost: "drpeer2.onrender.com",
     })
 
     const store2 = MemoryStore({ 3: 3, 4: 4 })
@@ -113,6 +116,7 @@ integrationTest("a Bus", {
       agentId: "agent-2",
       merge,
       ...store2,
+      signalingServerHost: "drpeer2.onrender.com",
     })
 
     await Promise.all([next(bus1.state), next(bus2.state)])
@@ -134,6 +138,7 @@ integrationTest("a Bus", {
       agentId: "agent-1",
       merge,
       ...store1,
+      signalingServerHost: "drpeer2.onrender.com",
     })
 
     const store2 = MemoryStore({})
@@ -142,6 +147,7 @@ integrationTest("a Bus", {
       agentId: "agent-2",
       merge,
       ...store2,
+      signalingServerHost: "drpeer2.onrender.com",
     })
 
     // wait for states to sync
@@ -169,6 +175,7 @@ integrationTest("a Bus", {
       agentId: "agent-1",
       merge,
       ...store1,
+      signalingServerHost: "drpeer2.onrender.com",
     })
 
     const store2 = MemoryStore({ 2: 2 })
@@ -177,6 +184,7 @@ integrationTest("a Bus", {
       agentId: "agent-2",
       merge,
       ...store2,
+      signalingServerHost: "drpeer2.onrender.com",
     })
 
     // NOTE: there's no await here, so the apply calls happen before the peers
@@ -199,6 +207,7 @@ integrationTest("a Bus", {
       topic: uuid(),
       save: () => {},
       agentId: "007",
+      signalingServerHost: "drpeer2.onrender.com",
     })
     const subscriber = spy()
     bus.subscriber = subscriber
@@ -213,6 +222,7 @@ integrationTest("a Bus", {
       topic: uuid(),
       save: () => {},
       agentId: "007",
+      signalingServerHost: "drpeer2.onrender.com",
     })
     let stateSeenBySubscriber: number | void = undefined
     const subscriber = () => (stateSeenBySubscriber = bus.state.get())
@@ -254,6 +264,7 @@ const nullNetwork: Network<any> = {
 async function PeerNetwork<Data>(
   agentId: string,
   topic: string,
+  signalingServerHost: string,
   data: () => Data,
   networkStatus: Consumer<NetworkStatus>,
   whosOnline: Consumer<Set<string>>,
@@ -265,6 +276,7 @@ async function PeerNetwork<Data>(
   const agentConfig = {
     id: agentId,
     topic,
+    signalingServerHost,
     onUpdate: update,
     onOnlineAgentsChanged: whosOnline,
     getCurrentState: data,
@@ -306,6 +318,7 @@ type Agent<Data> = {
 
 type AgentConfig<Data> = {
   id: string
+  signalingServerHost: string
   topic: string
   onUpdate(data: Data): unknown
   onOnlineAgentsChanged(agentIds: Set<string>): unknown
@@ -321,13 +334,15 @@ async function createHost<Data>(
   config: AgentConfig<Data>,
 ): Promise<Agent<Data>> {
   const timeToLiveSeconds = 10
-  const hostId = config.topic
   const connections = new Map<DataConnection, ConnectionMetadata>()
   const [death, die] = resolvablePromise<void>()
 
   let peer: Peer
   try {
-    peer = await createPeer(hostId)
+    peer = await createPeer({
+      peerId: config.topic,
+      signalingServerHost: config.signalingServerHost,
+    })
   } catch (e) {
     return deadAgent
   }
@@ -437,7 +452,7 @@ async function createClient<Data>(
   const hostPeerId = config.topic
   let peer: Peer
   try {
-    peer = await createPeer()
+    peer = await createPeer({ signalingServerHost: config.signalingServerHost })
   } catch (e) {
     console.error("error calling createPeer in createClient:", e)
     return deadAgent

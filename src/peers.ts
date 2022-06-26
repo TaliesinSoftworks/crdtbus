@@ -1,8 +1,15 @@
 import Peer, { DataConnection } from "peerjs"
 
-export async function createPeer(peerId?: string): Promise<Peer> {
+export async function createPeer(params: {
+  peerId?: string
+  signalingServerHost: string
+}): Promise<Peer> {
+  const { peerId, signalingServerHost } = params
   return new Promise((resolve, reject) => {
-    const peer = new Peer(peerId)
+    const peer = new Peer(peerId, {
+      host: signalingServerHost,
+      secure: true,
+    })
     peer.on("open", () => resolve(peer))
     peer.on("error", reject)
   })
