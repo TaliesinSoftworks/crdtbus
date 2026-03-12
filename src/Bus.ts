@@ -423,6 +423,7 @@ async function createHost<Data>(
           const metadata = connections.get(conn)
           if (metadata) {
             metadata.timeToLive = timeToLiveSeconds
+            conn.send({ type: "whosOnline", agentIds: [...connections.values()].map((c) => c.agentId).concat(config.id) })
           }
           break
         case "hello":
@@ -516,9 +517,18 @@ async function createClient<Data>(
     }
   }
   console.debug("> connected to host")
+
+  const hostTimeoutMs = 15000
+  let hostTimeout = setTimeout(disconnect, hostTimeoutMs)
+  function resetHostTimeout() {
+    clearTimeout(hostTimeout)
+    hostTimeout = setTimeout(disconnect, hostTimeoutMs)
+  }
+
   hostConn.on("close", disconnect)
   hostConn.on("error", disconnect)
   hostConn.on("data", (msg: Message<Data>) => {
+    resetHostTimeout()
     switch (msg.type) {
       case "whosOnline":
         config.onOnlineAgentsChanged(new Set(msg.agentIds))
@@ -552,6 +562,7 @@ async function createClient<Data>(
 
   function disconnect() {
     clearInterval(heartbeatInterval)
+    clearTimeout(hostTimeout)
     peer.destroy()
     die()
   }
