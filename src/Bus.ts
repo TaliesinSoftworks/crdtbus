@@ -25,6 +25,7 @@ export type BusConfig<T> = {
   readonly topic: string
   readonly agentId: string
   readonly signalingServerHost: string
+  readonly iceServers?: RTCIceServer[]
   load(): T
   save(data: T): void
   merge(a: T, b: T): T
@@ -48,6 +49,7 @@ export function Bus<T>(config: BusConfig<T>): Bus<T> {
       agentId,
       config.topic,
       config.signalingServerHost,
+      config.iceServers,
       state.get,
       networkStatus.pub,
       whosOnline.pub,
@@ -94,6 +96,39 @@ function MemoryStore<T>(initialState: T) {
     save: (newState: T) => (state = newState),
   }
 }
+
+integrationTest("a Bus configured with iceServers", {
+  async "syncs when iceServers is provided (extension point smoke test)"() {
+    type Obj = { [k: number]: number }
+    const topic = uuid()
+    const merge = (a: Obj, b: Obj) => ({ ...a, ...b })
+
+    const store1 = MemoryStore<Obj>({ 1: 1 })
+    const bus1 = Bus<Obj>({
+      topic,
+      agentId: "agent-1",
+      merge,
+      ...store1,
+      signalingServerHost: "drpeer2.onrender.com",
+      iceServers: [],
+    })
+
+    const store2 = MemoryStore<Obj>({ 2: 2 })
+    const bus2 = Bus<Obj>({
+      topic,
+      agentId: "agent-2",
+      merge,
+      ...store2,
+      signalingServerHost: "drpeer2.onrender.com",
+      iceServers: [],
+    })
+
+    await Promise.all([next(bus1.state), next(bus2.state)])
+    const expected: Obj = { 1: 1, 2: 2 }
+    expect(bus1.state.get(), equals, expected)
+    expect(bus2.state.get(), equals, expected)
+  },
+})
 
 integrationTest("a Bus", {
   async "syncs a CRDT with another bus that has the same topic"() {
@@ -265,6 +300,7 @@ async function PeerNetwork<Data>(
   agentId: string,
   topic: string,
   signalingServerHost: string,
+  iceServers: RTCIceServer[] | undefined,
   data: () => Data,
   networkStatus: Consumer<NetworkStatus>,
   whosOnline: Consumer<Set<string>>,
@@ -277,6 +313,7 @@ async function PeerNetwork<Data>(
     id: agentId,
     topic,
     signalingServerHost,
+    iceServers,
     onUpdate: update,
     onOnlineAgentsChanged: whosOnline,
     getCurrentState: data,
@@ -319,6 +356,7 @@ type Agent<Data> = {
 type AgentConfig<Data> = {
   id: string
   signalingServerHost: string
+  iceServers: RTCIceServer[] | undefined
   topic: string
   onUpdate(data: Data): unknown
   onOnlineAgentsChanged(agentIds: Set<string>): unknown
@@ -342,6 +380,7 @@ async function createHost<Data>(
     peer = await createPeer({
       peerId: config.topic,
       signalingServerHost: config.signalingServerHost,
+      ...(config.iceServers !== undefined && { iceServers: config.iceServers }),
     })
   } catch (e) {
     return deadAgent
@@ -452,7 +491,10 @@ async function createClient<Data>(
   const hostPeerId = config.topic
   let peer: Peer
   try {
-    peer = await createPeer({ signalingServerHost: config.signalingServerHost })
+    peer = await createPeer({
+      signalingServerHost: config.signalingServerHost,
+      ...(config.iceServers !== undefined && { iceServers: config.iceServers }),
+    })
   } catch (e) {
     console.error("error calling createPeer in createClient:", e)
     return deadAgent

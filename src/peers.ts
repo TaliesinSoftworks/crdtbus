@@ -3,12 +3,14 @@ import Peer, { DataConnection } from "peerjs"
 export async function createPeer(params: {
   peerId?: string
   signalingServerHost: string
+  iceServers?: RTCIceServer[]
 }): Promise<Peer> {
-  const { peerId, signalingServerHost } = params
+  const { peerId, signalingServerHost, iceServers } = params
   return new Promise((resolve, reject) => {
     const peer = new Peer(peerId, {
       host: signalingServerHost,
       secure: true,
+      ...(iceServers !== undefined && { config: { iceServers } }),
     })
     peer.on("open", () => resolve(peer))
     peer.on("error", reject)
