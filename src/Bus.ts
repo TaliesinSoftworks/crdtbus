@@ -26,6 +26,7 @@ export type BusConfig<T> = {
   readonly agentId: string
   readonly signalingServerHost: string
   readonly iceServers?: RTCIceServer[]
+  readonly hostTimeoutMs?: number
   load(): T
   save(data: T): void
   merge(a: T, b: T): T
@@ -50,6 +51,7 @@ export function Bus<T>(config: BusConfig<T>): Bus<T> {
       config.topic,
       config.signalingServerHost,
       config.iceServers,
+      config.hostTimeoutMs ?? 15000,
       state.get,
       networkStatus.pub,
       whosOnline.pub,
@@ -127,6 +129,46 @@ integrationTest("a Bus configured with iceServers", {
     const expected: Obj = { 1: 1, 2: 2 }
     expect(bus1.state.get(), equals, expected)
     expect(bus2.state.get(), equals, expected)
+  },
+})
+
+integrationTest("reconnection after host disappears", {
+  async "client reconnects and syncs with a new peer after host closes"() {
+    // This test covers the bug: if the host dies without sending a WebRTC close
+    // event (common on Firefox), the client must detect the dead connection via
+    // the host-timeout mechanism and trigger reconnection.
+    //
+    // We use hostTimeoutMs: 500 so the test completes quickly.
+    // In production, hostTimeoutMs defaults to 15000 (3 missed heartbeat acks).
+    type Obj = { [k: number]: number }
+    const topic = uuid()
+    const merge = (a: Obj, b: Obj) => ({ ...a, ...b })
+    const hostTimeoutMs = 500
+
+    // Step 1: bus1 (host) and bus2 (client) sync
+    const store1 = MemoryStore<Obj>({ 1: 1 })
+    const bus1 = Bus<Obj>({ topic, agentId: "agent-1", merge, ...store1, signalingServerHost: "drpeer2.onrender.com", hostTimeoutMs })
+    const store2 = MemoryStore<Obj>({ 2: 2 })
+    const bus2 = Bus<Obj>({ topic, agentId: "agent-2", merge, ...store2, signalingServerHost: "drpeer2.onrender.com", hostTimeoutMs })
+    await Promise.all([next(bus1.state), next(bus2.state)])
+    expect(bus1.state.get(), equals, { 1: 1, 2: 2 })
+
+    // Step 2: host closes (simulating it going away)
+    bus1.close()
+
+    // Step 3: wait for bus2 to detect the dead connection and become the new host,
+    // then a third peer joins and syncs
+    const store3 = MemoryStore<Obj>({ 3: 3 })
+    const bus3 = Bus<Obj>({ topic, agentId: "agent-3", merge, ...store3, signalingServerHost: "drpeer2.onrender.com", hostTimeoutMs })
+
+    // bus2 must reconnect (become host) and sync with bus3
+    await Promise.all([next(bus2.state), next(bus3.state)])
+    const expected: Obj = { 1: 1, 2: 2, 3: 3 }
+    expect(bus2.state.get(), equals, expected)
+    expect(bus3.state.get(), equals, expected)
+
+    bus2.close()
+    bus3.close()
   },
 })
 
@@ -301,6 +343,7 @@ async function PeerNetwork<Data>(
   topic: string,
   signalingServerHost: string,
   iceServers: RTCIceServer[] | undefined,
+  hostTimeoutMs: number,
   data: () => Data,
   networkStatus: Consumer<NetworkStatus>,
   whosOnline: Consumer<Set<string>>,
@@ -314,6 +357,7 @@ async function PeerNetwork<Data>(
     topic,
     signalingServerHost,
     iceServers,
+    hostTimeoutMs,
     onUpdate: update,
     onOnlineAgentsChanged: whosOnline,
     getCurrentState: data,
@@ -357,6 +401,7 @@ type AgentConfig<Data> = {
   id: string
   signalingServerHost: string
   iceServers: RTCIceServer[] | undefined
+  hostTimeoutMs: number
   topic: string
   onUpdate(data: Data): unknown
   onOnlineAgentsChanged(agentIds: Set<string>): unknown
@@ -518,11 +563,10 @@ async function createClient<Data>(
   }
   console.debug("> connected to host")
 
-  const hostTimeoutMs = 15000
-  let hostTimeout = setTimeout(disconnect, hostTimeoutMs)
+  let hostTimeout = setTimeout(disconnect, config.hostTimeoutMs)
   function resetHostTimeout() {
     clearTimeout(hostTimeout)
-    hostTimeout = setTimeout(disconnect, hostTimeoutMs)
+    hostTimeout = setTimeout(disconnect, config.hostTimeoutMs)
   }
 
   hostConn.on("close", disconnect)
